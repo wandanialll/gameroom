@@ -19,6 +19,8 @@ let viewX = 0,
 let scale = 1;
 const MIN_SCALE = 0.2;
 const MAX_SCALE = 3;
+const REMOTE_LERP = 0.35;
+const REMOTE_SNAP_EPSILON = 0.35;
 
 // Drag state
 let heldPieceId = null;
@@ -66,6 +68,8 @@ function moveGroupLocal(groupId, dx, dy) {
 	getGroupPieces(groupId).forEach((p) => {
 		p.x += dx;
 		p.y += dy;
+		p._tx = p.x;
+		p._ty = p.y;
 	});
 }
 
@@ -74,7 +78,71 @@ function applyPieceUpdates(updatedPieces) {
 		const p = getPiece(upd.id);
 		if (!p) return;
 		Object.assign(p, upd);
+		p._tx = p.x;
+		p._ty = p.y;
 	});
+}
+
+function setGroupTargetByDelta(groupId, dx, dy) {
+	getGroupPieces(groupId).forEach((piece) => {
+		const tx = typeof piece._tx === "number" ? piece._tx : piece.x;
+		const ty = typeof piece._ty === "number" ? piece._ty : piece.y;
+		piece._tx = tx + dx;
+		piece._ty = ty + dy;
+	});
+}
+
+function setPieceTargetAbsolute(piece, x, y) {
+	piece._tx = x;
+	piece._ty = y;
+}
+
+function initializePieceTargets() {
+	pieces.forEach((piece) => {
+		piece._tx = piece.x;
+		piece._ty = piece.y;
+	});
+}
+
+function stepRemoteInterpolation() {
+	let moved = false;
+
+	pieces.forEach((piece) => {
+		if (piece.heldBy === myId) {
+			piece._tx = piece.x;
+			piece._ty = piece.y;
+			return;
+		}
+
+		if (typeof piece._tx !== "number" || typeof piece._ty !== "number") {
+			piece._tx = piece.x;
+			piece._ty = piece.y;
+			return;
+		}
+
+		const dx = piece._tx - piece.x;
+		const dy = piece._ty - piece.y;
+
+		if (
+			Math.abs(dx) <= REMOTE_SNAP_EPSILON &&
+			Math.abs(dy) <= REMOTE_SNAP_EPSILON
+		) {
+			if (dx !== 0 || dy !== 0) {
+				piece.x = piece._tx;
+				piece.y = piece._ty;
+				moved = true;
+			}
+			return;
+		}
+
+		piece.x += dx * REMOTE_LERP;
+		piece.y += dy * REMOTE_LERP;
+		moved = true;
+	});
+
+	if (moved) {
+		markDirty();
+	}
 }
 
 function resizeCanvas() {
@@ -141,6 +209,7 @@ function connectSocket() {
 		myId = state.myId;
 		myColor = state.myColor;
 		pieces = state.pieces;
+		initializePieceTargets();
 		players = state.players;
 
 		document.getElementById("loading").style.display = "none";
@@ -188,6 +257,7 @@ function connectSocket() {
 		if (!p) return;
 		const activeGroupId = groupId || getPieceGroupId(p);
 		setGroupHeldState(activeGroupId, heldBy, color);
+		markDirty();
 	});
 
 	socket.on("piece_moved", ({ pieceId, groupId, dx, dy, x, y }) => {
@@ -195,11 +265,11 @@ function connectSocket() {
 		if (!p) return;
 		const activeGroupId = groupId || getPieceGroupId(p);
 		if (typeof dx === "number" && typeof dy === "number") {
-			moveGroupLocal(activeGroupId, dx, dy);
+			setGroupTargetByDelta(activeGroupId, dx, dy);
 		} else if (typeof x === "number" && typeof y === "number") {
-			p.x = x;
-			p.y = y;
+			setPieceTargetAbsolute(p, x, y);
 		}
+		markDirty();
 	});
 
 	socket.on(
@@ -232,6 +302,7 @@ function connectSocket() {
 				});
 			}
 			updateProgress();
+			markDirty();
 		},
 	);
 
@@ -240,6 +311,7 @@ function connectSocket() {
 		if (!p) return;
 		const activeGroupId = groupId || getPieceGroupId(p);
 		setGroupHeldState(activeGroupId, null, null);
+		markDirty();
 	});
 
 	socket.on("puzzle_complete", (data) => {
@@ -287,6 +359,7 @@ let dirty = true;
 
 function startRenderLoop() {
 	function loop() {
+		stepRemoteInterpolation();
 		if (dirty) {
 			render();
 			dirty = false;
@@ -542,7 +615,7 @@ function onMouseMove(e) {
 				p.x = nx;
 				p.y = ny;
 			}
-			socket.emit("piece_move", { pieceId: p.id, x: nx, y: ny });
+			socket.volatile.emit("piece_move", { pieceId: p.id, x: nx, y: ny });
 			markDirty();
 		}
 	} else if (isPanning) {
@@ -645,7 +718,7 @@ function onTouchMove(e) {
 					p.x = nx;
 					p.y = ny;
 				}
-				socket.emit("piece_move", { pieceId: p.id, x: nx, y: ny });
+				socket.volatile.emit("piece_move", { pieceId: p.id, x: nx, y: ny });
 				markDirty();
 			}
 		} else if (isPanning) {
