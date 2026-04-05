@@ -18,7 +18,23 @@ jobs:
           passphrase: ${{ secrets.DEPLOY_KEY_PASSPHRASE }}
           script: |
             set -e
-            cd "${{ secrets.DEPLOY_PATH }}"
+            APP_DIR="${{ secrets.DEPLOY_PATH }}"
+
+            if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
+              cd "$APP_DIR"
+            elif [ -d "/home/jigsaw/jigsaw" ]; then
+              cd "/home/jigsaw/jigsaw"
+            elif [ -d "/root/jigsaw" ]; then
+              cd "/root/jigsaw"
+            else
+              echo "No valid app directory found. Checked DEPLOY_PATH, /home/jigsaw/jigsaw, /root/jigsaw"
+              echo "Current user: $(whoami)"
+              echo "Home: $HOME"
+              ls -la "$HOME"
+              exit 1
+            fi
+
+            echo "Deploying from: $(pwd)"
             git fetch origin master
             git reset --hard origin/master
             npm ci --omit=dev

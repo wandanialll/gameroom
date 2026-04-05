@@ -162,6 +162,9 @@ cd /home/jigsaw/jigsaw 2>/dev/null || cd /root/jigsaw
 pwd
 ```
 
+If Actions fails with `cd: ***: No such file or directory`, your `DEPLOY_PATH` secret points to a non-existent path on the droplet.
+The workflow now auto-detects `/home/jigsaw/jigsaw` or `/root/jigsaw` as fallback.
+
 ### Workflow file
 
 The workflow is already in this repo at `.github/workflows/deploy.yml`.
