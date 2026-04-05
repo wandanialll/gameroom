@@ -147,7 +147,20 @@ Add these secrets:
 - `DROPLET_HOST` → your droplet IP
 - `DROPLET_USER` → `root` (or `jigsaw`)
 - `DEPLOY_KEY` → the private key content from above
+- `DEPLOY_KEY_PASSPHRASE` → passphrase for that private key
 - `DEPLOY_PATH` → absolute app path on droplet (example: `/home/jigsaw/jigsaw`)
+
+Use one of these `DEPLOY_PATH` values based on where you cloned the repo:
+
+- `/home/jigsaw/jigsaw` (if deploying as user `jigsaw`)
+- `/root/jigsaw` (if deploying as user `root`)
+
+Quick way to confirm on droplet:
+
+```bash
+cd /home/jigsaw/jigsaw 2>/dev/null || cd /root/jigsaw
+pwd
+```
 
 ### Workflow file
 
@@ -171,6 +184,7 @@ jobs:
           host: ${{ secrets.DROPLET_HOST }}
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
+          passphrase: ${{ secrets.DEPLOY_KEY_PASSPHRASE }}
           script: |
             set -e
             cd "${{ secrets.DEPLOY_PATH }}"
