@@ -70,7 +70,33 @@ App is now running on **port 3000**.
 
 ## 3. Nginx Reverse Proxy (port 80/443)
 
+If your droplet already runs Caddy on ports 80/443 (as in your case), skip nginx/Certbot and use Caddy for TLS instead.
+
+### Option A: Caddy (recommended if Caddy is already installed)
+
+Caddy can proxy the app and automatically manage HTTPS certificates.
+
+Edit `/etc/caddy/Caddyfile`:
+
+```caddy
+game.wandanial.com {
+  reverse_proxy 127.0.0.1:3000
+}
+```
+
+Then reload Caddy:
+
 ```bash
+sudo caddy fmt --overwrite /etc/caddy/Caddyfile
+sudo systemctl reload caddy
+```
+
+### Option B: Nginx + Certbot
+
+Only use this if nothing else is listening on ports 80/443.
+
+```bash
+apt-get update
 apt-get install -y nginx
 ```
 
@@ -104,13 +130,48 @@ systemctl reload nginx
 ### Add HTTPS (free, via Certbot)
 
 ```bash
+apt-get update
 apt-get install -y certbot python3-certbot-nginx
 certbot --nginx -d game.wandanial.com
 ```
 
+If `nginx` or `certbot` is still missing on the droplet, install them first with the commands above. On a fresh server, they are not installed by default.
+
+### If port 80/443 is already in use
+
+Check what owns the ports:
+
+```bash
+sudo ss -ltnp | grep ':80\|:443'
+```
+
+If you see `caddy`, do not use Certbot/nginx on those ports. Keep Caddy running and use the Caddyfile shown above.
+
 Certbot auto-renews. Done.
 
 > If Cloudflare is used, keep this DNS record in **DNS-only** mode while issuing/renewing certs directly on the droplet.
+
+### If you see `SSL_ERROR_INTERNAL_ERROR_ALERT`
+
+This usually means nginx/Certbot on the droplet has a bad or incomplete TLS config.
+
+Run these on the droplet:
+
+```bash
+sudo nginx -t
+sudo certbot --nginx -d game.wandanial.com
+sudo systemctl reload nginx
+```
+
+If Certbot reports the certificate already exists but the browser still errors, remove and reissue it:
+
+```bash
+sudo certbot delete --cert-name game.wandanial.com
+sudo certbot --nginx -d game.wandanial.com
+sudo systemctl reload nginx
+```
+
+Make sure your DNS record stays on **DNS-only** in Cloudflare and points to the droplet IP.
 
 ---
 

@@ -19,7 +19,7 @@ const MAX_IMAGE_DIM = 1200; // resize uploads to this max dimension
 // ─── In-memory room store ────────────────────────────────────────────────────
 // Map<roomId, Room>
 // Room = { id, hostNickname, imageFile, cols, rows, pieceCount, pieces[], players{}, timer, complete }
-// Piece = { id, col, row, correctX, correctY, x, y, locked, heldBy }
+// Piece = { id, col, row, correctX, correctY, x, y, locked, heldBy, groupId }
 const rooms = new Map();
 
 // ─── Dirs ────────────────────────────────────────────────────────────────────
@@ -60,6 +60,178 @@ function shuffle(arr) {
 		[arr[i], arr[j]] = [arr[j], arr[i]];
 	}
 	return arr;
+}
+
+function getPieceSnapshot(piece) {
+	return {
+		id: piece.id,
+		col: piece.col,
+		row: piece.row,
+		correctX: piece.correctX,
+		correctY: piece.correctY,
+		x: piece.x,
+		y: piece.y,
+		locked: piece.locked,
+		heldBy: piece.heldBy,
+		groupId: piece.groupId,
+	};
+}
+
+function getPieceById(room, pieceId) {
+	return room.pieces.find((p) => p.id === pieceId) || null;
+}
+
+function getGroupPieces(room, groupId) {
+	return room.pieces.filter((p) => p.groupId === groupId);
+}
+
+function getPieceGroupId(room, pieceId) {
+	return getPieceById(room, pieceId)?.groupId || null;
+}
+
+function isOrthogonalNeighbor(a, b) {
+	const rowDiff = Math.abs(a.row - b.row);
+	const colDiff = Math.abs(a.col - b.col);
+	return (rowDiff === 1 && colDiff === 0) || (rowDiff === 0 && colDiff === 1);
+}
+
+function applyDeltaToGroup(room, groupId, dx, dy) {
+	const members = getGroupPieces(room, groupId);
+	members.forEach((piece) => {
+		piece.x += dx;
+		piece.y += dy;
+	});
+	return members;
+}
+
+function setGroupHeldBy(room, groupId, heldBy) {
+	const members = getGroupPieces(room, groupId);
+	members.forEach((piece) => {
+		piece.heldBy = heldBy;
+	});
+	return members;
+}
+
+function mergeGroupIds(room, sourceGroupId, targetGroupId) {
+	if (sourceGroupId === targetGroupId)
+		return getGroupPieces(room, targetGroupId);
+	const sourceMembers = getGroupPieces(room, sourceGroupId);
+	sourceMembers.forEach((piece) => {
+		piece.groupId = targetGroupId;
+	});
+	return getGroupPieces(room, targetGroupId);
+}
+
+function groupIsFullyAligned(room, groupId) {
+	const members = getGroupPieces(room, groupId);
+	return (
+		members.length > 0 &&
+		members.every(
+			(piece) =>
+				Math.abs(piece.x - piece.correctX) <= SNAP_THRESHOLD &&
+				Math.abs(piece.y - piece.correctY) <= SNAP_THRESHOLD,
+		)
+	);
+}
+
+function lockGroup(room, groupId, actorId) {
+	const members = getGroupPieces(room, groupId);
+	if (members.length === 0) return [];
+
+	members.forEach((piece) => {
+		piece.x = piece.correctX;
+		piece.y = piece.correctY;
+		piece.locked = true;
+		piece.heldBy = null;
+	});
+
+	if (actorId && room.players[actorId]) {
+		room.players[actorId].score += members.length;
+		io.to(room.id).emit("players_update", { players: room.players });
+	}
+
+	return members.map((piece) => piece.id);
+}
+
+function findBestGroupSnap(room, movingGroupId) {
+	const movingGroup = getGroupPieces(room, movingGroupId).filter(
+		(piece) => !piece.locked,
+	);
+	let best = null;
+
+	for (const movingPiece of movingGroup) {
+		for (const candidate of room.pieces) {
+			if (candidate.groupId === movingGroupId) continue;
+			if (candidate.heldBy) continue;
+			if (!isOrthogonalNeighbor(movingPiece, candidate)) continue;
+
+			const targetX = candidate.x + (movingPiece.correctX - candidate.correctX);
+			const targetY = candidate.y + (movingPiece.correctY - candidate.correctY);
+			const dx = targetX - movingPiece.x;
+			const dy = targetY - movingPiece.y;
+			const distance = Math.hypot(dx, dy);
+
+			if (distance > SNAP_THRESHOLD) continue;
+
+			if (!best || distance < best.distance) {
+				best = {
+					movingPieceId: movingPiece.id,
+					candidatePieceId: candidate.id,
+					candidateGroupId: candidate.groupId,
+					candidateLocked: candidate.locked,
+					dx,
+					dy,
+					distance,
+				};
+			}
+		}
+	}
+
+	return best;
+}
+
+function buildGroupSnapshot(room, groupId) {
+	return getGroupPieces(room, groupId).map(getPieceSnapshot);
+}
+
+function resolveGroupDrop(room, movingGroupId, actorId) {
+	let activeGroupId = movingGroupId;
+
+	while (true) {
+		const snap = findBestGroupSnap(room, activeGroupId);
+		if (!snap) {
+			if (groupIsFullyAligned(room, activeGroupId)) {
+				const lockedPieceIds = lockGroup(room, activeGroupId, actorId);
+				return {
+					locked: lockedPieceIds.length > 0,
+					lockedPieceIds,
+					groupId: activeGroupId,
+				};
+			}
+
+			return {
+				locked: false,
+				lockedPieceIds: [],
+				groupId: activeGroupId,
+			};
+		}
+
+		applyDeltaToGroup(room, activeGroupId, snap.dx, snap.dy);
+
+		if (snap.candidateLocked) {
+			const lockedPieceIds = lockGroup(room, activeGroupId, actorId);
+			return {
+				locked: lockedPieceIds.length > 0,
+				lockedPieceIds,
+				groupId: activeGroupId,
+				snappedTo: snap.candidatePieceId,
+			};
+		}
+
+		activeGroupId = snap.candidateGroupId;
+		mergeGroupIds(room, movingGroupId, activeGroupId);
+		movingGroupId = activeGroupId;
+	}
 }
 
 function scheduleRoomCleanup(roomId) {
@@ -116,7 +288,7 @@ async function sliceImage(imagePath, roomId, cols, rows) {
 				.jpeg({ quality: 85 })
 				.toFile(outFile);
 
-			pieces.push({ id, col, row, correctX: left, correctY: top });
+			pieces.push({ id, col, row, correctX: left, correctY: top, groupId: id });
 		}
 	}
 
@@ -134,6 +306,7 @@ function scatterPieces(pieces, pieceW, pieceH, boardW, boardH) {
 		y: Math.random() * (CANVAS_H - pieceH),
 		locked: false,
 		heldBy: null,
+		groupId: p.groupId ?? p.id,
 	}));
 }
 
@@ -298,12 +471,19 @@ io.on("connection", (socket) => {
 	socket.on("piece_grab", ({ pieceId }) => {
 		const room = rooms.get(currentRoom);
 		if (!room || room.complete) return;
-		const piece = room.pieces.find((p) => p.id === pieceId);
-		if (!piece || piece.locked || piece.heldBy) return;
+		const piece = getPieceById(room, pieceId);
+		if (!piece || piece.locked) return;
+		const groupId = piece.groupId;
+		const groupPieces = getGroupPieces(room, groupId);
+		if (
+			groupPieces.some((p) => p.locked || (p.heldBy && p.heldBy !== socket.id))
+		)
+			return;
 
-		piece.heldBy = socket.id;
+		setGroupHeldBy(room, groupId, socket.id);
 		socket.to(currentRoom).emit("piece_grabbed", {
 			pieceId,
+			groupId,
 			heldBy: socket.id,
 			color: room.players[socket.id]?.color,
 		});
@@ -313,58 +493,55 @@ io.on("connection", (socket) => {
 	socket.on("piece_move", ({ pieceId, x, y }) => {
 		const room = rooms.get(currentRoom);
 		if (!room || room.complete) return;
-		const piece = room.pieces.find((p) => p.id === pieceId);
+		const piece = getPieceById(room, pieceId);
 		if (!piece || piece.locked || piece.heldBy !== socket.id) return;
+		const groupId = piece.groupId;
+		const groupPieces = getGroupPieces(room, groupId);
+		const deltaX = x - piece.x;
+		const deltaY = y - piece.y;
+		if (deltaX === 0 && deltaY === 0) return;
 
-		piece.x = x;
-		piece.y = y;
+		applyDeltaToGroup(room, groupId, deltaX, deltaY);
 
-		socket
-			.to(currentRoom)
-			.emit("piece_moved", { pieceId, x, y, movedBy: socket.id });
+		socket.to(currentRoom).emit("piece_moved", {
+			pieceId,
+			groupId,
+			dx: deltaX,
+			dy: deltaY,
+			movedBy: socket.id,
+		});
 	});
 
 	// Player drops a piece
 	socket.on("piece_drop", ({ pieceId, x, y }) => {
 		const room = rooms.get(currentRoom);
 		if (!room || room.complete) return;
-		const piece = room.pieces.find((p) => p.id === pieceId);
+		const piece = getPieceById(room, pieceId);
 		if (!piece || piece.locked || piece.heldBy !== socket.id) return;
-
-		piece.x = x;
-		piece.y = y;
-		piece.heldBy = null;
-
-		// Check snap
-		const dx = Math.abs(x - piece.correctX);
-		const dy = Math.abs(y - piece.correctY);
-		let locked = false;
-
-		if (dx <= SNAP_THRESHOLD && dy <= SNAP_THRESHOLD) {
-			piece.x = piece.correctX;
-			piece.y = piece.correctY;
-			piece.locked = true;
-			locked = true;
-
-			// Credit the player
-			if (room.players[socket.id]) {
-				room.players[socket.id].score += 1;
-			}
-
-			io.to(currentRoom).emit("players_update", { players: room.players });
+		const groupId = piece.groupId;
+		const groupPieces = getGroupPieces(room, groupId);
+		const deltaX = x - piece.x;
+		const deltaY = y - piece.y;
+		if (deltaX !== 0 || deltaY !== 0) {
+			applyDeltaToGroup(room, groupId, deltaX, deltaY);
 		}
+
+		setGroupHeldBy(room, groupId, null);
+
+		const result = resolveGroupDrop(room, groupId, socket.id);
+		const updatedGroupPieces = buildGroupSnapshot(room, result.groupId);
 
 		io.to(currentRoom).emit("piece_dropped", {
 			pieceId,
-			x: piece.x,
-			y: piece.y,
-			locked,
-			lockedBy: locked ? socket.id : null,
+			groupId: result.groupId,
+			pieces: updatedGroupPieces,
+			locked: result.locked,
+			lockedPieceIds: result.lockedPieceIds,
+			lockedBy: result.locked ? socket.id : null,
 			color: room.players[socket.id]?.color,
 		});
 
-		// Check if puzzle complete
-		if (locked) {
+		if (result.locked) {
 			const allLocked = room.pieces.every((p) => p.locked);
 			if (allLocked) {
 				handleCompletion(room);
@@ -379,7 +556,10 @@ io.on("connection", (socket) => {
 		room.pieces.forEach((p) => {
 			if (p.heldBy === socket.id) {
 				p.heldBy = null;
-				io.to(currentRoom).emit("piece_released", { pieceId: p.id });
+				io.to(currentRoom).emit("piece_released", {
+					pieceId: p.id,
+					groupId: p.groupId,
+				});
 			}
 		});
 	}
