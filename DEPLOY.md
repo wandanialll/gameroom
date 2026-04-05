@@ -148,22 +148,33 @@ Add these secrets:
 - `DROPLET_USER` → `root` (or `jigsaw`)
 - `DEPLOY_KEY` → the private key content from above
 - `DEPLOY_KEY_PASSPHRASE` → passphrase for that private key
-- `DEPLOY_PATH` → absolute app path on droplet (example: `/home/jigsaw/jigsaw`)
+- `DEPLOY_PATH` → optional absolute app path on droplet (defaults to `$HOME/gameroom`)
+- `REPO_CLONE_URL` → optional repo clone URL (needed for private repos)
 
-Use one of these `DEPLOY_PATH` values based on where you cloned the repo:
+Use one of these `DEPLOY_PATH` values if you want to force a custom location:
 
 - `/home/jigsaw/jigsaw` (if deploying as user `jigsaw`)
-- `/root/jigsaw` (if deploying as user `root`)
+- `/root/gameroom` (if deploying as user `root`)
 
-Quick way to confirm on droplet:
+For a brand-new droplet, you can leave `DEPLOY_PATH` unset and the workflow will clone into `$HOME/gameroom` on first run.
+
+If the repo is private, set `REPO_CLONE_URL` to an SSH URL like:
+
+```text
+git@github.com:YOUR_USERNAME/gameroom.git
+```
+
+and make sure that droplet user has a GitHub deploy key configured.
+
+Quick way to confirm path on droplet:
 
 ```bash
-cd /home/jigsaw/jigsaw 2>/dev/null || cd /root/jigsaw
+cd /home/jigsaw/gameroom 2>/dev/null || cd /root/gameroom
 pwd
 ```
 
-If Actions fails with `cd: ***: No such file or directory`, your `DEPLOY_PATH` secret points to a non-existent path on the droplet.
-The workflow now auto-detects `/home/jigsaw/jigsaw` or `/root/jigsaw` as fallback.
+If Actions fails with `APP_DIR exists but is not a git repo`, your `DEPLOY_PATH` points to a non-empty folder.
+Use an empty folder (or remove old files) and rerun.
 
 ### Workflow file
 
@@ -190,11 +201,33 @@ jobs:
           passphrase: ${{ secrets.DEPLOY_KEY_PASSPHRASE }}
           script: |
             set -e
-            cd "${{ secrets.DEPLOY_PATH }}"
+            APP_DIR="${{ secrets.DEPLOY_PATH }}"
+            if [ -z "$APP_DIR" ]; then
+              APP_DIR="$HOME/gameroom"
+            fi
+
+            REPO_URL="${{ secrets.REPO_CLONE_URL }}"
+            if [ -z "$REPO_URL" ]; then
+              REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
+            fi
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p "$APP_DIR"
+              git clone --branch master "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            git remote set-url origin "$REPO_URL" || true
             git fetch origin master
             git reset --hard origin/master
             npm ci --omit=dev
-            pm2 restart jigsaw
+
+            if pm2 describe jigsaw >/dev/null 2>&1; then
+              pm2 restart jigsaw --update-env
+            else
+              pm2 start server.js --name jigsaw
+            fi
+
             pm2 save
 ```
 

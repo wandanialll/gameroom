@@ -19,24 +19,41 @@ jobs:
           script: |
             set -e
             APP_DIR="${{ secrets.DEPLOY_PATH }}"
-
-            if [ -n "$APP_DIR" ] && [ -d "$APP_DIR" ]; then
-              cd "$APP_DIR"
-            elif [ -d "/home/jigsaw/jigsaw" ]; then
-              cd "/home/jigsaw/jigsaw"
-            elif [ -d "/root/jigsaw" ]; then
-              cd "/root/jigsaw"
-            else
-              echo "No valid app directory found. Checked DEPLOY_PATH, /home/jigsaw/jigsaw, /root/jigsaw"
-              echo "Current user: $(whoami)"
-              echo "Home: $HOME"
-              ls -la "$HOME"
-              exit 1
+            if [ -z "$APP_DIR" ]; then
+              APP_DIR="$HOME/gameroom"
             fi
 
+            REPO_URL="${{ secrets.REPO_CLONE_URL }}"
+            if [ -z "$REPO_URL" ]; then
+              REPO_URL="${{ github.server_url }}/${{ github.repository }}.git"
+            fi
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p "$APP_DIR"
+              if [ -n "$(ls -A "$APP_DIR" 2>/dev/null)" ]; then
+                echo "APP_DIR exists but is not a git repo: $APP_DIR"
+                ls -la "$APP_DIR"
+                exit 1
+              fi
+              echo "First deploy: cloning $REPO_URL into $APP_DIR"
+              git clone --branch master "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
             echo "Deploying from: $(pwd)"
+            git remote set-url origin "$REPO_URL" || true
             git fetch origin master
             git reset --hard origin/master
             npm ci --omit=dev
-            pm2 restart jigsaw
+
+            if ! command -v pm2 >/dev/null 2>&1; then
+              npm install -g pm2 || sudo npm install -g pm2
+            fi
+
+            if pm2 describe jigsaw >/dev/null 2>&1; then
+              pm2 restart jigsaw --update-env
+            else
+              pm2 start server.js --name jigsaw
+            fi
+
             pm2 save
