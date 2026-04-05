@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jigsaw Together</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #F5F0E8;
+      --ink: #1A1510;
+      --rust: #C4522A;
+      --gold: #D4A84B;
+      --sage: #7A8C6E;
+      --paper: #EDE8DC;
+      --shadow: rgba(26,21,16,0.12);
+    }
+
+    body {
+      background: var(--cream);
+      color: var(--ink);
+      font-family: 'DM Sans', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    /* Decorative background lines */
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background-image:
+        repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(26,21,16,0.04) 39px, rgba(26,21,16,0.04) 40px);
+      pointer-events: none;
+    }
+
+    .logo {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2.5rem, 6vw, 4.5rem);
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      line-height: 1;
+      text-align: center;
+      margin-bottom: 0.25rem;
+    }
+
+    .logo span { color: var(--rust); }
+
+    .tagline {
+      text-align: center;
+      font-size: 0.9rem;
+      font-weight: 300;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: var(--sage);
+      margin-bottom: 3rem;
+    }
+
+    .card {
+      background: white;
+      border: 1px solid rgba(26,21,16,0.1);
+      border-radius: 2px;
+      padding: 2.5rem;
+      width: 100%;
+      max-width: 480px;
+      box-shadow: 6px 6px 0 var(--ink);
+    }
+
+    .card-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
+      font-weight: 700;
+      margin-bottom: 1.75rem;
+      padding-bottom: 1rem;
+      border-bottom: 1px solid var(--paper);
+    }
+
+    .field { margin-bottom: 1.25rem; }
+
+    label {
+      display: block;
+      font-size: 0.75rem;
+      font-weight: 500;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--sage);
+      margin-bottom: 0.4rem;
+    }
+
+    input[type="text"], input[type="number"] {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1.5px solid rgba(26,21,16,0.15);
+      border-radius: 2px;
+      background: var(--cream);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      color: var(--ink);
+      transition: border-color 0.2s;
+      outline: none;
+    }
+
+    input:focus { border-color: var(--rust); }
+
+    .upload-area {
+      border: 2px dashed rgba(26,21,16,0.2);
+      border-radius: 2px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: var(--cream);
+      position: relative;
+    }
+
+    .upload-area:hover, .upload-area.dragover {
+      border-color: var(--rust);
+      background: rgba(196,82,42,0.04);
+    }
+
+    .upload-area input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .upload-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+
+    .upload-text {
+      font-size: 0.85rem;
+      color: var(--sage);
+    }
+
+    .preview-img {
+      max-width: 100%;
+      max-height: 180px;
+      border-radius: 2px;
+      object-fit: cover;
+      display: none;
+    }
+
+    .piece-hint {
+      font-size: 0.75rem;
+      color: var(--sage);
+      margin-top: 0.35rem;
+    }
+
+    .btn {
+      width: 100%;
+      padding: 0.9rem;
+      background: var(--ink);
+      color: white;
+      border: none;
+      border-radius: 2px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      margin-top: 1.5rem;
+      transition: background 0.2s, transform 0.1s;
+      position: relative;
+    }
+
+    .btn:hover { background: var(--rust); }
+    .btn:active { transform: scale(0.99); }
+    .btn:disabled { background: #aaa; cursor: not-allowed; }
+
+    .btn-loading::after {
+      content: '';
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.4);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin-left: 0.6rem;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      margin: 2rem 0;
+    }
+
+    .divider::before, .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(26,21,16,0.12);
+    }
+
+    .divider span {
+      font-size: 0.75rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--sage);
+    }
+
+    .join-row {
+      display: flex;
+      gap: 0.75rem;
+    }
+
+    .join-row input { flex: 1; text-transform: uppercase; letter-spacing: 0.1em; }
+
+    .btn-outline {
+      width: auto;
+      padding: 0.75rem 1.25rem;
+      background: transparent;
+      color: var(--ink);
+      border: 1.5px solid var(--ink);
+      border-radius: 2px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      margin-top: 0;
+      transition: all 0.2s;
+      white-space: nowrap;
+    }
+
+    .btn-outline:hover { background: var(--ink); color: white; }
+
+    .error {
+      background: rgba(196,82,42,0.1);
+      border: 1px solid var(--rust);
+      color: var(--rust);
+      padding: 0.75rem 1rem;
+      border-radius: 2px;
+      font-size: 0.85rem;
+      margin-top: 1rem;
+      display: none;
+    }
+
+    .footer {
+      margin-top: 2.5rem;
+      font-size: 0.75rem;
+      color: rgba(26,21,16,0.35);
+      text-align: center;
+      letter-spacing: 0.05em;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="logo">Jigsaw <span>Together</span></div>
+  <p class="tagline">Cooperative puzzle — real time</p>
+
+  <div class="card">
+    <div class="card-title">Create a new puzzle</div>
+
+    <div class="field">
+      <label>Your nickname</label>
+      <input type="text" id="nickname" placeholder="e.g. Puzzle Master" maxlength="20" autocomplete="off" />
+    </div>
+
+    <div class="field">
+      <label>Upload a photo</label>
+      <div class="upload-area" id="uploadArea">
+        <input type="file" id="imageInput" accept="image/*" />
+        <div id="uploadContent">
+          <div class="upload-icon">🖼️</div>
+          <div class="upload-text">Click or drag & drop (max 5MB)</div>
+        </div>
+        <img class="preview-img" id="previewImg" alt="preview" />
+      </div>
+    </div>
+
+    <div class="field">
+      <label>Number of pieces</label>
+      <input type="number" id="pieceCount" value="25" min="4" max="400" />
+      <div class="piece-hint" id="pieceHint">Actual pieces: 25 (5×5 grid)</div>
+    </div>
+
+    <button class="btn" id="createBtn" onclick="createGame()">Create Puzzle & Get Link</button>
+    <div class="error" id="createError"></div>
+
+    <div class="divider"><span>or join one</span></div>
+
+    <div class="field">
+      <label>Your nickname</label>
+      <input type="text" id="joinNickname" placeholder="e.g. Puzzle Pal" maxlength="20" autocomplete="off" />
+    </div>
+
+    <div class="join-row">
+      <input type="text" id="roomCode" placeholder="ROOM CODE" maxlength="6" />
+      <button class="btn-outline" onclick="joinGame()">Join →</button>
+    </div>
+    <div class="error" id="joinError"></div>
+  </div>
+
+  <div class="footer">puzzle pieces lock when placed correctly · up to 10 players</div>
+
+  <script>
+    // Piece count hint
+    const pieceInput = document.getElementById('pieceCount');
+    const pieceHint = document.getElementById('pieceHint');
+
+    function calcGrid(n) {
+      const cols = Math.round(Math.sqrt(n * (4 / 3)));
+      const rows = Math.round(n / cols);
+      return { cols, rows, actual: cols * rows };
+    }
+
+    pieceInput.addEventListener('input', () => {
+      const n = Math.max(4, Math.min(400, parseInt(pieceInput.value) || 25));
+      const { cols, rows, actual } = calcGrid(n);
+      pieceHint.textContent = `Actual pieces: ${actual} (${cols}×${rows} grid)`;
+    });
+
+    // Upload preview
+    const imageInput = document.getElementById('imageInput');
+    const previewImg = document.getElementById('previewImg');
+    const uploadContent = document.getElementById('uploadContent');
+    const uploadArea = document.getElementById('uploadArea');
+
+    imageInput.addEventListener('change', () => {
+      const file = imageInput.files[0];
+      if (!file) return;
+      const url = URL.createObjectURL(file);
+      previewImg.src = url;
+      previewImg.style.display = 'block';
+      uploadContent.style.display = 'none';
+    });
+
+    uploadArea.addEventListener('dragover', e => { e.preventDefault(); uploadArea.classList.add('dragover'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragover'));
+    uploadArea.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragover');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) {
+        const dt = new DataTransfer();
+        dt.items.add(file);
+        imageInput.files = dt.files;
+        imageInput.dispatchEvent(new Event('change'));
+      }
+    });
+
+    // Create game
+    async function createGame() {
+      const nickname = document.getElementById('nickname').value.trim();
+      const pieceCount = parseInt(pieceInput.value) || 25;
+      const file = imageInput.files[0];
+      const errEl = document.getElementById('createError');
+      const btn = document.getElementById('createBtn');
+
+      errEl.style.display = 'none';
+
+      if (!nickname) { showError(errEl, 'Please enter a nickname'); return; }
+      if (!file) { showError(errEl, 'Please upload a photo'); return; }
+
+      btn.disabled = true;
+      btn.textContent = 'Creating puzzle…';
+      btn.classList.add('btn-loading');
+
+      try {
+        const fd = new FormData();
+        fd.append('nickname', nickname);
+        fd.append('pieceCount', pieceCount);
+        fd.append('image', file);
+
+        const res = await fetch('/api/create', { method: 'POST', body: fd });
+        const data = await res.json();
+
+        if (!res.ok) throw new Error(data.error || 'Server error');
+
+        // Store nickname for the room
+        sessionStorage.setItem('nickname', nickname);
+        window.location.href = `/room/${data.roomId}`;
+      } catch (err) {
+        showError(errEl, err.message);
+        btn.disabled = false;
+        btn.textContent = 'Create Puzzle & Get Link';
+        btn.classList.remove('btn-loading');
+      }
+    }
+
+    // Join game
+    function joinGame() {
+      const nickname = document.getElementById('joinNickname').value.trim();
+      const code = document.getElementById('roomCode').value.trim().toUpperCase();
+      const errEl = document.getElementById('joinError');
+      errEl.style.display = 'none';
+
+      if (!nickname) { showError(errEl, 'Please enter a nickname'); return; }
+      if (!code || code.length < 4) { showError(errEl, 'Please enter a valid room code'); return; }
+
+      sessionStorage.setItem('nickname', nickname);
+      window.location.href = `/room/${code}`;
+    }
+
+    document.getElementById('roomCode').addEventListener('keydown', e => {
+      if (e.key === 'Enter') joinGame();
+    });
+
+    function showError(el, msg) {
+      el.textContent = msg;
+      el.style.display = 'block';
+    }
+  </script>
+</body>
+</html>

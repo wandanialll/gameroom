@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Jigsaw Together — Room</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cream: #F5F0E8;
+      --ink: #1A1510;
+      --rust: #C4522A;
+      --gold: #D4A84B;
+      --sage: #7A8C6E;
+      --paper: #EDE8DC;
+      --panel-bg: rgba(245,240,232,0.96);
+    }
+
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #2C2720;
+      font-family: 'DM Sans', sans-serif;
+      color: var(--cream);
+    }
+
+    /* ── Top bar ── */
+    #topbar {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 52px;
+      background: var(--ink);
+      display: flex;
+      align-items: center;
+      padding: 0 1rem;
+      gap: 1rem;
+      z-index: 100;
+      border-bottom: 1px solid rgba(245,240,232,0.1);
+    }
+
+    .tb-logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.1rem;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .tb-logo span { color: var(--rust); }
+
+    .tb-room {
+      font-size: 0.7rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--sage);
+      cursor: pointer;
+      border: 1px solid rgba(245,240,232,0.15);
+      padding: 0.25rem 0.6rem;
+      border-radius: 2px;
+      transition: border-color 0.2s;
+      white-space: nowrap;
+    }
+
+    .tb-room:hover { border-color: var(--gold); color: var(--gold); }
+
+    .tb-progress {
+      flex: 1;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+
+    .progress-bar {
+      flex: 1;
+      height: 4px;
+      background: rgba(245,240,232,0.1);
+      border-radius: 2px;
+      max-width: 300px;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: var(--gold);
+      border-radius: 2px;
+      transition: width 0.4s ease;
+      width: 0%;
+    }
+
+    .progress-label {
+      font-size: 0.75rem;
+      color: var(--sage);
+      white-space: nowrap;
+    }
+
+    .tb-players {
+      display: flex;
+      gap: 0.4rem;
+      align-items: center;
+    }
+
+    .player-pip {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.6rem;
+      font-weight: 500;
+      border: 2px solid rgba(245,240,232,0.2);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--ink);
+      position: relative;
+    }
+
+    .player-pip .score-badge {
+      position: absolute;
+      bottom: -4px; right: -4px;
+      background: var(--ink);
+      color: var(--gold);
+      font-size: 0.5rem;
+      font-weight: 700;
+      border-radius: 8px;
+      padding: 0 3px;
+      min-width: 12px;
+      text-align: center;
+      border: 1px solid rgba(245,240,232,0.2);
+    }
+
+    /* ── Canvas area ── */
+    #canvas-wrap {
+      position: fixed;
+      top: 52px; left: 0; right: 0; bottom: 0;
+      overflow: hidden;
+      cursor: grab;
+    }
+
+    #canvas-wrap.grabbing { cursor: grabbing; }
+    #canvas-wrap.piece-held { cursor: none; }
+
+    #gameCanvas {
+      position: absolute;
+      top: 0; left: 0;
+      image-rendering: pixelated;
+    }
+
+    /* ── Side panel (share) ── */
+    #shareToast {
+      position: fixed;
+      top: 64px; right: 1rem;
+      background: var(--ink);
+      border: 1px solid rgba(245,240,232,0.15);
+      border-radius: 2px;
+      padding: 1rem 1.25rem;
+      font-size: 0.85rem;
+      z-index: 200;
+      max-width: 280px;
+      opacity: 0;
+      transform: translateY(-8px);
+      transition: all 0.25s;
+      pointer-events: none;
+    }
+
+    #shareToast.show {
+      opacity: 1;
+      transform: translateY(0);
+      pointer-events: auto;
+    }
+
+    #shareToast .toast-title {
+      font-family: 'Playfair Display', serif;
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+      color: var(--gold);
+    }
+
+    #shareToast .link-box {
+      background: rgba(245,240,232,0.08);
+      padding: 0.5rem 0.75rem;
+      border-radius: 2px;
+      font-family: monospace;
+      font-size: 0.75rem;
+      word-break: break-all;
+      margin-bottom: 0.6rem;
+      cursor: pointer;
+      border: 1px solid rgba(245,240,232,0.15);
+    }
+
+    #shareToast .link-box:hover { border-color: var(--gold); }
+
+    #shareToast .copied { color: var(--sage); font-size: 0.75rem; display: none; }
+
+    .toast-close {
+      position: absolute;
+      top: 0.5rem; right: 0.75rem;
+      cursor: pointer;
+      font-size: 1.1rem;
+      color: var(--sage);
+    }
+
+    /* ── Completion overlay ── */
+    #completionOverlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(26,21,16,0.92);
+      z-index: 300;
+      align-items: center;
+      justify-content: center;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+
+    #completionOverlay.show { display: flex; }
+
+    .complete-title {
+      font-family: 'Playfair Display', serif;
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 900;
+      color: var(--gold);
+      text-align: center;
+    }
+
+    .complete-img {
+      max-width: min(80vw, 500px);
+      max-height: 50vh;
+      border: 3px solid var(--gold);
+      border-radius: 2px;
+      box-shadow: 0 0 60px rgba(212,168,75,0.3);
+    }
+
+    .complete-stats {
+      display: flex;
+      gap: 2rem;
+      flex-wrap: wrap;
+      justify-content: center;
+    }
+
+    .stat {
+      text-align: center;
+    }
+
+    .stat-val {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      font-weight: 700;
+      color: var(--gold);
+    }
+
+    .stat-label {
+      font-size: 0.75rem;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--sage);
+    }
+
+    .complete-btns { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+
+    .c-btn {
+      padding: 0.75rem 1.5rem;
+      border-radius: 2px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.9rem;
+      font-weight: 500;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+    }
+
+    .c-btn-primary { background: var(--gold); color: var(--ink); }
+    .c-btn-primary:hover { background: var(--rust); color: white; }
+    .c-btn-outline { background: transparent; color: var(--cream); border: 1.5px solid var(--cream); }
+    .c-btn-outline:hover { background: var(--cream); color: var(--ink); }
+
+    /* ── Loading ── */
+    #loading {
+      position: fixed;
+      inset: 0;
+      background: #2C2720;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 500;
+      gap: 1rem;
+    }
+
+    #loading .logo {
+      font-family: 'Playfair Display', serif;
+      font-size: 2rem;
+      font-weight: 900;
+    }
+
+    #loading .logo span { color: var(--rust); }
+
+    .spinner {
+      width: 32px; height: 32px;
+      border: 2px solid rgba(245,240,232,0.2);
+      border-top-color: var(--gold);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    #loading p { font-size: 0.85rem; color: var(--sage); }
+
+    /* ── Nickname prompt ── */
+    #nicknamePrompt {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(26,21,16,0.9);
+      z-index: 400;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #nicknamePrompt.show { display: flex; }
+
+    .np-card {
+      background: var(--cream);
+      color: var(--ink);
+      padding: 2rem;
+      border-radius: 2px;
+      width: 340px;
+      box-shadow: 6px 6px 0 var(--ink);
+    }
+
+    .np-card h2 {
+      font-family: 'Playfair Display', serif;
+      font-size: 1.4rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .np-card p {
+      font-size: 0.85rem;
+      color: var(--sage);
+      margin-bottom: 1.25rem;
+    }
+
+    .np-card input {
+      width: 100%;
+      padding: 0.75rem 1rem;
+      border: 1.5px solid rgba(26,21,16,0.2);
+      border-radius: 2px;
+      font-size: 0.95rem;
+      font-family: 'DM Sans', sans-serif;
+      background: white;
+      outline: none;
+      margin-bottom: 1rem;
+    }
+
+    .np-card input:focus { border-color: var(--rust); }
+
+    .np-btn {
+      width: 100%;
+      padding: 0.8rem;
+      background: var(--ink);
+      color: white;
+      border: none;
+      border-radius: 2px;
+      font-family: 'DM Sans', sans-serif;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    .np-btn:hover { background: var(--rust); }
+
+    /* zoom controls */
+    #zoomControls {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+      z-index: 100;
+    }
+
+    .zoom-btn {
+      width: 36px; height: 36px;
+      background: var(--ink);
+      color: var(--cream);
+      border: 1px solid rgba(245,240,232,0.15);
+      border-radius: 2px;
+      font-size: 1.1rem;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: background 0.15s;
+    }
+
+    .zoom-btn:hover { background: var(--rust); }
+
+    #minimap {
+      position: fixed;
+      bottom: 1.5rem;
+      left: 1.5rem;
+      width: 120px;
+      height: 80px;
+      background: rgba(26,21,16,0.7);
+      border: 1px solid rgba(245,240,232,0.15);
+      border-radius: 2px;
+      z-index: 100;
+      overflow: hidden;
+    }
+
+    #minimap canvas { width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+
+<!-- Loading -->
+<div id="loading">
+  <div class="logo">Jigsaw <span>Together</span></div>
+  <div class="spinner"></div>
+  <p>Setting up your puzzle…</p>
+</div>
+
+<!-- Nickname prompt (for direct link joiners without sessionStorage) -->
+<div id="nicknamePrompt">
+  <div class="np-card">
+    <h2>Join the puzzle</h2>
+    <p>Enter a nickname to jump in</p>
+    <input type="text" id="npInput" placeholder="Your nickname" maxlength="20" autocomplete="off" />
+    <button class="np-btn" onclick="submitNickname()">Join →</button>
+  </div>
+</div>
+
+<!-- Top bar -->
+<div id="topbar">
+  <div class="tb-logo">Jigsaw <span>Together</span></div>
+  <div class="tb-room" id="roomCodeLabel" onclick="toggleShare()" title="Click to share">⬡ ——</div>
+
+  <div class="tb-progress">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill"></div></div>
+    <div class="progress-label" id="progressLabel">0 / 0</div>
+  </div>
+
+  <div class="tb-players" id="playersList"></div>
+</div>
+
+<!-- Canvas -->
+<div id="canvas-wrap" id="canvasWrap">
+  <canvas id="gameCanvas"></canvas>
+</div>
+
+<!-- Share toast -->
+<div id="shareToast">
+  <div class="toast-close" onclick="toggleShare()">×</div>
+  <div class="toast-title">Share this room</div>
+  <div class="link-box" id="shareLink" onclick="copyLink()">—</div>
+  <div class="copied" id="copiedMsg">✓ Copied to clipboard</div>
+</div>
+
+<!-- Zoom -->
+<div id="zoomControls">
+  <button class="zoom-btn" onclick="adjustZoom(0.15)">+</button>
+  <button class="zoom-btn" onclick="adjustZoom(-0.15)">−</button>
+  <button class="zoom-btn" onclick="resetZoom()" title="Reset view">⌂</button>
+</div>
+
+<!-- Minimap -->
+<div id="minimap"><canvas id="minimapCanvas"></canvas></div>
+
+<!-- Completion overlay -->
+<div id="completionOverlay">
+  <div class="complete-title">🧩 Puzzle Complete!</div>
+  <img class="complete-img" id="completeImg" src="" alt="Completed puzzle" />
+  <div class="complete-stats" id="completeStats"></div>
+  <div class="complete-btns">
+    <a id="downloadBtn" href="#" download="puzzle-completed.jpg">
+      <button class="c-btn c-btn-primary">⬇ Download Image</button>
+    </a>
+    <button class="c-btn c-btn-outline" onclick="window.location.href='/'">New Puzzle →</button>
+  </div>
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+<script src="/client.js"></script>
+</body>
+</html>
