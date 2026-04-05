@@ -5,6 +5,8 @@
 Recommended approach: **GitHub → manual pull on droplet** (simplest, zero-config).
 Optional: **GitHub Actions** for one-command deploys after setup.
 
+Domain in use: **game.wandanial.com** (Cloudflare A record, DNS-only / no proxy).
+
 ---
 
 ## 1. One-time Droplet Setup
@@ -77,7 +79,7 @@ Create `/etc/nginx/sites-available/jigsaw`:
 ```nginx
 server {
     listen 80;
-    server_name YOUR_DOMAIN_OR_IP;
+  server_name game.wandanial.com;
 
     client_max_body_size 10M;   # allow image uploads
 
@@ -103,10 +105,12 @@ systemctl reload nginx
 
 ```bash
 apt-get install -y certbot python3-certbot-nginx
-certbot --nginx -d YOUR_DOMAIN
+certbot --nginx -d game.wandanial.com
 ```
 
 Certbot auto-renews. Done.
+
+> If Cloudflare is used, keep this DNS record in **DNS-only** mode while issuing/renewing certs directly on the droplet.
 
 ---
 
@@ -139,37 +143,45 @@ cat ~/.ssh/github_deploy      # copy this — you'll add it to GitHub
 ### In your GitHub repo → Settings → Secrets and variables → Actions
 
 Add these secrets:
+
 - `DROPLET_HOST` → your droplet IP
 - `DROPLET_USER` → `root` (or `jigsaw`)
 - `DEPLOY_KEY` → the private key content from above
+- `DEPLOY_PATH` → absolute app path on droplet (example: `/home/jigsaw/jigsaw`)
 
-### Create `.github/workflows/deploy.yml`
+### Workflow file
+
+The workflow is already in this repo at `.github/workflows/deploy.yml`.
 
 ```yaml
 name: Deploy to DigitalOcean
 
 on:
   push:
-    branches: [main]
+    branches: [master]
+  workflow_dispatch:
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+        uses: appleboy/ssh-action@v1.2.0
         with:
           host: ${{ secrets.DROPLET_HOST }}
           username: ${{ secrets.DROPLET_USER }}
           key: ${{ secrets.DEPLOY_KEY }}
           script: |
-            cd /home/jigsaw/jigsaw
-            git pull origin main
-            npm install --production
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+            git fetch origin master
+            git reset --hard origin/master
+            npm ci --omit=dev
             pm2 restart jigsaw
+            pm2 save
 ```
 
-Now every `git push` to `main` auto-deploys. GitHub Actions runs free for public repos.
+Now every `git push` to `master` auto-deploys. GitHub Actions runs free for public repos.
 
 ---
 
@@ -226,6 +238,7 @@ Your droplet has 512MB RAM. With Node + PM2 + nginx the baseline is ~80MB.
 Each active puzzle room uses ~5MB. You have comfortable headroom for 2–10 players.
 
 Monitor live:
+
 ```bash
 pm2 monit
 # or
@@ -233,6 +246,7 @@ free -h
 ```
 
 If memory grows unexpectedly:
+
 ```bash
 pm2 restart jigsaw   # clears in-memory rooms (players will need to rejoin)
 ```
