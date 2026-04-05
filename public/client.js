@@ -8,6 +8,8 @@ let myColor = "#FF6B6B";
 let gameState = null; // full state from server
 let pieces = []; // local piece array (mirrored from server)
 let players = {};
+let referenceImageUrl = "";
+let referenceVisible = sessionStorage.getItem("showReference") === "1";
 
 // Canvas / viewport
 const canvas = document.getElementById("gameCanvas");
@@ -102,6 +104,28 @@ function initializePieceTargets() {
 		piece._tx = piece.x;
 		piece._ty = piece.y;
 	});
+}
+
+function syncReferencePanel() {
+	const panel = document.getElementById("referencePanel");
+	const toggle = document.getElementById("referenceToggle");
+	const img = document.getElementById("referenceImg");
+	if (!panel || !toggle || !img) return;
+
+	panel.classList.toggle("show", referenceVisible);
+	toggle.classList.toggle("active", referenceVisible);
+	toggle.textContent = referenceVisible ? "Hide Ref" : "Reference";
+
+	if (referenceImageUrl) {
+		img.src = referenceImageUrl;
+		img.alt = "Reference photo";
+	}
+}
+
+function toggleReference() {
+	referenceVisible = !referenceVisible;
+	sessionStorage.setItem("showReference", referenceVisible ? "1" : "0");
+	syncReferencePanel();
 }
 
 function stepRemoteInterpolation() {
@@ -211,6 +235,7 @@ function connectSocket() {
 		pieces = state.pieces;
 		initializePieceTargets();
 		players = state.players;
+		referenceImageUrl = state.referenceImage || referenceImageUrl;
 
 		document.getElementById("loading").style.display = "none";
 
@@ -223,6 +248,7 @@ function connectSocket() {
 		setupInteraction();
 		loadPieceImages(() => {
 			centerBoard();
+			syncReferencePanel();
 			render();
 			startRenderLoop();
 		});

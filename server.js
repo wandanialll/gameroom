@@ -48,6 +48,7 @@ const upload = multer({
 // ─── Static ──────────────────────────────────────────────────────────────────
 app.use(express.json());
 app.use(express.static(path.join(__dirname, "public")));
+app.use("/uploads", express.static(UPLOAD_DIR));
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function generateRoomCode() {
@@ -341,6 +342,7 @@ app.post("/api/create", upload.single("image"), async (req, res) => {
 			id: roomId,
 			hostNickname: nickname.trim(),
 			imageFile: req.file.path,
+			referenceImage: `/uploads/${path.basename(req.file.path)}`,
 			cols,
 			rows,
 			pieceCount: actualCount,
@@ -383,6 +385,7 @@ app.get("/api/room/:id", (req, res) => {
 		boardH: room.boardH,
 		complete: room.complete,
 		completedImage: room.completedImage,
+		referenceImage: room.referenceImage,
 		playerCount: Object.keys(room.players).length,
 	});
 });
@@ -454,6 +457,7 @@ io.on("connection", (socket) => {
 			rows: room.rows,
 			complete: room.complete,
 			completedImage: room.completedImage,
+			referenceImage: room.referenceImage,
 			myId: socket.id,
 			myColor: color,
 		});
